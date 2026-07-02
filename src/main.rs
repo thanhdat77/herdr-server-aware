@@ -57,7 +57,7 @@ fn run() -> Result<(), String> {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 struct Config {
     #[serde(default)]
     servers: ServersConfig,
@@ -176,7 +176,14 @@ fn collect_servers() -> Vec<ServerEntry> {
         let path = home().join(".ssh/config");
         if let Ok(text) = fs::read_to_string(path) {
             servers.extend(ssh_config_hosts(&text).into_iter().map(|host| {
-                server_entry(&host.name, host.hostname.as_deref(), host.user.as_deref(), Some(&host.name), &[], &base_dir)
+                server_entry(
+                    &host.name,
+                    host.hostname.as_deref(),
+                    host.user.as_deref(),
+                    Some(&host.name),
+                    &[],
+                    &base_dir,
+                )
             }));
         }
     }
@@ -283,7 +290,11 @@ fn load_config() -> Config {
     fs::read_to_string(config_path())
         .ok()
         .and_then(|text| toml::from_str(&text).ok())
-        .or_else(|| fs::read_to_string(picker_config_path()).ok().and_then(|text| toml::from_str(&text).ok()))
+        .or_else(|| {
+            fs::read_to_string(picker_config_path())
+                .ok()
+                .and_then(|text| toml::from_str(&text).ok())
+        })
         .unwrap_or_default()
 }
 
@@ -470,12 +481,7 @@ fn write_meta(dir: &Path, target: &str, label: Option<&str>) -> Result<(), Strin
 }
 
 fn run_ssh_in_pane(pane_id: &str, target: &str) -> Result<(), String> {
-    run_herdr([
-        "pane",
-        "run",
-        pane_id,
-        &ssh_connect_command(target),
-    ])
+    run_herdr(["pane", "run", pane_id, &ssh_connect_command(target)])
 }
 
 fn ssh_connect_command(target: &str) -> String {
@@ -538,7 +544,9 @@ fn expand_home(value: &str) -> PathBuf {
 }
 
 fn home() -> PathBuf {
-    env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/"))
+    env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/"))
 }
 
 fn shell_quote(value: &str) -> String {
@@ -555,14 +563,6 @@ fn default_base_dir() -> String {
 
 fn yes() -> bool {
     true
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            servers: ServersConfig::default(),
-        }
-    }
 }
 
 impl Default for ServersConfig {
@@ -587,7 +587,8 @@ mod tests {
 
     #[test]
     fn parses_picker_server_base_dir() {
-        let path = picker_server_base_dir("[servers]\nbase_dir = \"~/workspace/server\"\n").unwrap();
+        let path =
+            picker_server_base_dir("[servers]\nbase_dir = \"~/workspace/server\"\n").unwrap();
         assert!(path.ends_with("workspace/server"));
     }
 

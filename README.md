@@ -1,5 +1,8 @@
 # Herdr Server Aware
 
+[![CI](https://github.com/thanhdat77/herdr-server-aware/actions/workflows/ci.yml/badge.svg)](https://github.com/thanhdat77/herdr-server-aware/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Small Herdr helper plugin for server workspaces.
 
 It stores server identity in the workspace directory:
