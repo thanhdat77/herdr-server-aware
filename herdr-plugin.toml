@@ -1,0 +1,27 @@
+id = "herdr-server-aware"
+name = "Server Aware"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Remember server workspace identity and open SSH-aware tabs/reconnects."
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["cargo", "build", "--release"]
+
+[[actions]]
+id = "new-server-tab"
+title = "Server Aware: new tab"
+contexts = ["workspace", "global"]
+command = ["./target/release/herdr-server-aware", "new-tab"]
+
+[[actions]]
+id = "reconnect-current"
+title = "Server Aware: reconnect current pane"
+contexts = ["workspace", "global"]
+command = ["./target/release/herdr-server-aware", "reconnect"]
+
+[[actions]]
+id = "adopt-current"
+title = "Server Aware: adopt current workspace"
+contexts = ["workspace", "global"]
+command = ["./target/release/herdr-server-aware", "adopt"]

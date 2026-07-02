@@ -1,0 +1,19 @@
+[package]
+name = "herdr-server-aware"
+version = "0.1.0"
+edition = "2021"
+description = "Server workspace awareness helpers for Herdr"
+license = "MIT"
+readme = "README.md"
+keywords = ["herdr", "ssh", "terminal", "plugin"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
