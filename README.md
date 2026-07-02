@@ -20,6 +20,40 @@ cargo build --release
 herdr plugin link "$PWD"
 ```
 
+## Picker integration
+
+Add this to `herdr-picker-plus` config so servers still appear under `Ctrl-S`:
+
+```toml
+[[integrations]]
+id = "server-aware"
+label = "server"
+enabled = true
+collect = "herdr-server-aware list"
+open = "herdr-server-aware open {{id}}"
+notify_success = false
+notify_error = true
+```
+
+## Config
+
+```toml
+[servers]
+base_dir = "~/workspace/server"
+ssh_config = true
+
+# [[servers.entries]]
+# name = "prod-api"
+# host = "10.0.0.5"
+# user = "ubuntu"
+# tags = ["prod", "api"]
+#
+# [[servers.entries]]
+# name = "prod-shortcut"
+# target = "prod-api"
+# tags = ["prod"]
+```
+
 ## Keybinding
 
 ```toml
@@ -33,6 +67,8 @@ description = "smart server tab"
 ## Commands
 
 ```bash
+herdr-server-aware list
+herdr-server-aware open nn
 herdr-server-aware init --dir ~/workspace/server/nn --target nn --label nn
 herdr-server-aware new-tab
 herdr-server-aware reconnect

@@ -43,6 +43,8 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     match env::args().nth(1).as_deref() {
+        Some("list") => list_servers(),
+        Some("open") => open_from_args(),
         Some("init") => init_from_args(),
         Some("new-tab") => new_tab(),
         Some("reconnect") => reconnect_current(),
@@ -53,6 +55,250 @@ fn run() -> Result<(), String> {
         }
         Some(other) => Err(format!("unknown command: {other}")),
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct Config {
+    #[serde(default)]
+    servers: ServersConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ServersConfig {
+    #[serde(default = "default_base_dir")]
+    base_dir: String,
+    #[serde(default = "yes")]
+    ssh_config: bool,
+    #[serde(default)]
+    entries: Vec<ServerEntryConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ServerEntryConfig {
+    name: String,
+    host: Option<String>,
+    user: Option<String>,
+    target: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct PickerItem {
+    id: String,
+    title: String,
+    subtitle: String,
+    path: String,
+    kind: String,
+}
+
+#[derive(Debug, Clone)]
+struct ServerEntry {
+    name: String,
+    target: String,
+    path: PathBuf,
+    subtitle: String,
+}
+
+fn list_servers() -> Result<(), String> {
+    let items: Vec<PickerItem> = collect_servers()
+        .into_iter()
+        .map(|server| PickerItem {
+            id: server.name.clone(),
+            title: server.name,
+            subtitle: server.subtitle,
+            path: server.path.display().to_string(),
+            kind: "server".into(),
+        })
+        .collect();
+    println!(
+        "{}",
+        serde_json::to_string(&items).map_err(|err| err.to_string())?
+    );
+    Ok(())
+}
+
+fn open_from_args() -> Result<(), String> {
+    let id = env::args().nth(2).ok_or("open requires server id")?;
+    let server = collect_servers()
+        .into_iter()
+        .find(|server| server.name == id)
+        .ok_or_else(|| format!("unknown server: {id}"))?;
+    open_server(&server)
+}
+
+fn open_server(server: &ServerEntry) -> Result<(), String> {
+    if let Some(workspace_id) = matching_server_workspace(&server.name)? {
+        return run_herdr(["workspace", "focus", &workspace_id]);
+    }
+    write_meta(&server.path, &server.target, Some(&server.name))?;
+    let json = herdr_json([
+        "workspace",
+        "create",
+        "--cwd",
+        &server.path.display().to_string(),
+        "--label",
+        &format!("server: {}", server.name),
+        "--focus",
+    ])?;
+    if let Some(workspace_id) = json
+        .pointer("/result/workspace/workspace_id")
+        .and_then(Value::as_str)
+    {
+        let _ = run_herdr(["tab", "rename", &format!("{workspace_id}:t1"), "remote"]);
+    }
+    if let Some(pane_id) = json
+        .pointer("/result/root_pane/pane_id")
+        .and_then(Value::as_str)
+    {
+        run_ssh_in_pane(pane_id, &server.target)?;
+    }
+    Ok(())
+}
+
+fn matching_server_workspace(name: &str) -> Result<Option<String>, String> {
+    let want = format!("server: {name}").to_ascii_lowercase();
+    let json = herdr_json(["workspace", "list"])?;
+    let Some(workspaces) = json.pointer("/result/workspaces").and_then(Value::as_array) else {
+        return Ok(None);
+    };
+    Ok(workspaces.iter().find_map(|ws| {
+        let label = ws.get("label")?.as_str()?.to_ascii_lowercase();
+        (label == want).then(|| ws.get("workspace_id")?.as_str().map(str::to_string))?
+    }))
+}
+
+fn collect_servers() -> Vec<ServerEntry> {
+    let config = load_config();
+    let base_dir = expand_home(&config.servers.base_dir);
+    let mut servers = Vec::new();
+    if config.servers.ssh_config {
+        let path = home().join(".ssh/config");
+        if let Ok(text) = fs::read_to_string(path) {
+            servers.extend(ssh_config_hosts(&text).into_iter().map(|host| {
+                server_entry(&host.name, host.hostname.as_deref(), host.user.as_deref(), Some(&host.name), &[], &base_dir)
+            }));
+        }
+    }
+    servers.extend(config.servers.entries.iter().map(|server| {
+        server_entry(
+            &server.name,
+            server.host.as_deref(),
+            server.user.as_deref(),
+            server.target.as_deref(),
+            &server.tags,
+            &base_dir,
+        )
+    }));
+    servers
+}
+
+fn server_entry(
+    name: &str,
+    host: Option<&str>,
+    user: Option<&str>,
+    target_override: Option<&str>,
+    tags: &[String],
+    base_dir: &Path,
+) -> ServerEntry {
+    let target = target_override
+        .map(str::to_string)
+        .unwrap_or_else(|| match (user, host) {
+            (Some(user), Some(host)) => format!("{user}@{host}"),
+            (_, Some(host)) => host.to_string(),
+            _ => name.to_string(),
+        });
+    let mut search = vec![target.clone()];
+    if let Some(host) = host {
+        search.push(host.into());
+    }
+    if let Some(user) = user {
+        search.push(user.into());
+    }
+    search.extend(tags.iter().cloned());
+    ServerEntry {
+        name: name.into(),
+        target: target.clone(),
+        path: base_dir.join(name),
+        subtitle: format!("autossh/ssh {}", search.join(" ")),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SshHost {
+    name: String,
+    hostname: Option<String>,
+    user: Option<String>,
+}
+
+fn ssh_config_hosts(text: &str) -> Vec<SshHost> {
+    let mut out = Vec::new();
+    let mut names: Vec<String> = Vec::new();
+    let mut hostname: Option<String> = None;
+    let mut user: Option<String> = None;
+
+    for line in text.lines().map(clean_ssh_config_line) {
+        let Some((key, value)) = line.split_once(char::is_whitespace) else {
+            continue;
+        };
+        let key = key.to_ascii_lowercase();
+        let value = value.trim();
+        if key == "host" {
+            flush_ssh_hosts(&mut out, &names, hostname.take(), user.take());
+            names = value
+                .split_whitespace()
+                .filter(|name| !name.contains(['*', '?', '!']))
+                .map(str::to_string)
+                .collect();
+        } else if key == "hostname" {
+            hostname = Some(value.into());
+        } else if key == "user" {
+            user = Some(value.into());
+        }
+    }
+    flush_ssh_hosts(&mut out, &names, hostname, user);
+    out
+}
+
+fn clean_ssh_config_line(line: &str) -> &str {
+    line.split('#').next().unwrap_or("").trim()
+}
+
+fn flush_ssh_hosts(
+    out: &mut Vec<SshHost>,
+    names: &[String],
+    hostname: Option<String>,
+    user: Option<String>,
+) {
+    for name in names {
+        out.push(SshHost {
+            name: name.clone(),
+            hostname: hostname.clone(),
+            user: user.clone(),
+        });
+    }
+}
+
+fn load_config() -> Config {
+    fs::read_to_string(config_path())
+        .ok()
+        .and_then(|text| toml::from_str(&text).ok())
+        .or_else(|| fs::read_to_string(picker_config_path()).ok().and_then(|text| toml::from_str(&text).ok()))
+        .unwrap_or_default()
+}
+
+fn config_path() -> PathBuf {
+    config_home().join("herdr/plugins/config/herdr-server-aware/config.toml")
+}
+
+fn picker_config_path() -> PathBuf {
+    config_home().join("herdr/plugins/config/herdr-picker-plus/config.toml")
+}
+
+fn config_home() -> PathBuf {
+    env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| home().join(".config"))
 }
 
 fn init_from_args() -> Result<(), String> {
@@ -271,16 +517,10 @@ where
 }
 
 fn server_base_dir() -> PathBuf {
-    let config = env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| home().join(".config"))
-        .join("herdr/plugins/config/herdr-picker-plus/config.toml");
-    fs::read_to_string(config)
-        .ok()
-        .and_then(|text| picker_server_base_dir(&text))
-        .unwrap_or_else(|| home().join("workspace/server"))
+    expand_home(&load_config().servers.base_dir)
 }
 
+#[cfg(test)]
 fn picker_server_base_dir(text: &str) -> Option<PathBuf> {
     let value = text.parse::<toml::Value>().ok()?;
     let raw = value.get("servers")?.get("base_dir")?.as_str()?;
@@ -309,9 +549,35 @@ fn default_mode() -> String {
     "ssh".into()
 }
 
+fn default_base_dir() -> String {
+    "~/workspace/server".into()
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            servers: ServersConfig::default(),
+        }
+    }
+}
+
+impl Default for ServersConfig {
+    fn default() -> Self {
+        Self {
+            base_dir: default_base_dir(),
+            ssh_config: true,
+            entries: vec![],
+        }
+    }
+}
+
 fn print_help() {
     println!(
-        "herdr-server-aware\n\ncommands:\n  init --dir DIR --target TARGET [--label LABEL]\n  new-tab\n  reconnect\n  adopt"
+        "herdr-server-aware\n\ncommands:\n  list\n  open SERVER\n  init --dir DIR --target TARGET [--label LABEL]\n  new-tab\n  reconnect\n  adopt"
     );
 }
 

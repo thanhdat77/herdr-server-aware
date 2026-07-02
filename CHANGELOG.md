@@ -5,6 +5,8 @@
 ## [0.1.0] - 2026-07-02
 
 ### Added
+- `list` and `open SERVER` commands for Herdr Picker Plus command/JSON integration.
+- Server config support via `[servers]`, `ssh_config`, and `[[servers.entries]]`.
 - Server metadata file support via `.herdr-server.toml`.
 - `new-server-tab` plugin action: create a new tab and auto-connect when inside a server workspace.
 - `reconnect-current` plugin action: reconnect the current pane to the remembered server target.
