@@ -47,7 +47,8 @@ herdr plugin link "$PWD"
 
 ```bash
 herdr-server-aware list              # local server entries
-herdr-server-aware remote-list nn    # remote Herdr terminals on server nn
+herdr-server-aware remote-list nn           # live remote Herdr terminals on server nn
+herdr-server-aware remote-list nn --cache   # use fresh cached result when available
 ```
 
 Each item has this shape:
@@ -86,7 +87,7 @@ For one known server:
 id = "server-aware-terminals-nn"
 label = "nn terminals"
 enabled = true
-collect = "herdr-server-aware remote-list nn"
+collect = "herdr-server-aware remote-list nn --cache --ttl-ms 10000"
 open = "bash -lc 'id=\"$1\"; server=${id%%::*}; term=${id#*::}; herdr-server-aware attach-terminal \"$server\" \"$term\"' -- {{id}}"
 notify_success = false
 notify_error = true
@@ -148,6 +149,15 @@ For a server that already runs Herdr, list remote terminals:
 ```bash
 herdr-server-aware remote-list nn
 ```
+
+For picker/search integrations, use a short cache so repeated searches do not SSH on every keystroke:
+
+```bash
+herdr-server-aware remote-list nn --cache --ttl-ms 10000
+herdr-server-aware remote-list nn --refresh
+```
+
+`remote-list` is live by default and writes the cache after a successful fetch. `--cache` returns a fresh cache entry when available; `--refresh` forces a live fetch.
 
 Then attach one remote Herdr terminal into the current local workspace:
 

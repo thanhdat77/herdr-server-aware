@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- Optional `remote-list` cache with `--cache`, `--refresh`, and `--ttl-ms` for picker/search integrations.
+- Agent project docs under `.pi/docs/`.
+
 ## [0.2.0] - 2026-07-02
 
 ### Added

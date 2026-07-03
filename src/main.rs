@@ -253,13 +253,38 @@ fn probe_from_args() -> Result<(), String> {
 }
 
 fn remote_list_from_args() -> Result<(), String> {
-    let target = target_from_arg(&env::args().nth(2).ok_or("remote-list requires server")?);
-    let items = remote::list_terminals(&target)?;
+    let (target, options) = parse_remote_list_args(env::args().skip(2))?;
+    let target = target_from_arg(&target);
+    let items = remote::list_terminals_with_options(&target, options)?;
     println!(
         "{}",
         serde_json::to_string(&items).map_err(|err| err.to_string())?
     );
     Ok(())
+}
+
+fn parse_remote_list_args<I>(args: I) -> Result<(String, remote::ListOptions), String>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut target = None;
+    let mut options = remote::ListOptions::default();
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--cache" => options.cache = true,
+            "--refresh" => options.refresh = true,
+            "--ttl-ms" => {
+                let value = args.next().ok_or("--ttl-ms requires value")?;
+                options.ttl_ms = value
+                    .parse()
+                    .map_err(|_| format!("invalid --ttl-ms value: {value}"))?;
+            }
+            _ if target.is_none() => target = Some(arg),
+            other => return Err(format!("unknown remote-list arg: {other}")),
+        }
+    }
+    Ok((target.ok_or("remote-list requires server")?, options))
 }
 
 fn attach_terminal_from_args() -> Result<(), String> {
@@ -441,7 +466,7 @@ fn created_pane_id(json: &Value) -> Result<&str, String> {
 
 fn print_help() {
     println!(
-        "herdr-server-aware\n\ncommands:\n  list\n  open SERVER\n  init --dir DIR --target TARGET [--label LABEL] [--mode ssh|herdr-remote|herdr-terminal]\n  new-tab\n  reconnect\n  adopt\n  probe SERVER\n  remote-list SERVER\n  attach-terminal SERVER TERMINAL_ID"
+        "herdr-server-aware\n\ncommands:\n  list\n  open SERVER\n  init --dir DIR --target TARGET [--label LABEL] [--mode ssh|herdr-remote|herdr-terminal]\n  new-tab\n  reconnect\n  adopt\n  probe SERVER\n  remote-list SERVER [--cache] [--refresh] [--ttl-ms N]\n  attach-terminal SERVER TERMINAL_ID"
     );
 }
 
@@ -461,5 +486,20 @@ mod tests {
         assert_eq!(mode_name(ConnectMode::Ssh), "ssh");
         assert_eq!(mode_name(ConnectMode::HerdrRemote), "herdr-remote");
         assert_eq!(mode_name(ConnectMode::HerdrTerminal), "herdr-terminal");
+    }
+
+    #[test]
+    fn parses_remote_list_cache_flags() {
+        let (target, options) = parse_remote_list_args([
+            "nn".into(),
+            "--cache".into(),
+            "--ttl-ms".into(),
+            "5000".into(),
+        ])
+        .unwrap();
+        assert_eq!(target, "nn");
+        assert!(options.cache);
+        assert!(!options.refresh);
+        assert_eq!(options.ttl_ms, 5000);
     }
 }
