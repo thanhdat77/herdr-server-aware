@@ -100,7 +100,10 @@ fn open_server(server: &ServerEntry) -> Result<(), String> {
 
 fn open_ssh_server(server: &ServerEntry) -> Result<(), String> {
     if let Some(workspace_id) = matching_server_workspace(&server.name)? {
-        return run_herdr(["workspace", "focus", &workspace_id]);
+        sync_server_workspace(&workspace_id, &found_for_server(server, ConnectMode::Ssh))?;
+        run_herdr(["workspace", "focus", &workspace_id])?;
+        let pane = current_pane()?;
+        return run_connect_in_pane(&pane.pane_id, &server.target, ConnectMode::Ssh);
     }
     write_meta(
         &server.path,
@@ -195,6 +198,9 @@ fn init_from_args() -> Result<(), String> {
 fn new_tab() -> Result<(), String> {
     let pane = current_pane()?;
     let found = server_meta_for_pane(&pane);
+    if let Some(found) = &found {
+        sync_server_workspace(&pane.workspace_id, found)?;
+    }
     let cwd = found.as_ref().map(|m| m.dir.as_path()).unwrap_or(&pane.cwd);
     let mut args = vec![
         "tab".into(),
@@ -225,6 +231,7 @@ fn new_tab() -> Result<(), String> {
 fn reconnect_current() -> Result<(), String> {
     let pane = current_pane()?;
     let found = server_meta_for_pane(&pane).ok_or("no server metadata found for current pane")?;
+    sync_server_workspace(&pane.workspace_id, &found)?;
     run_connect_in_pane(
         &pane.pane_id,
         &found.meta.target,
@@ -239,7 +246,16 @@ fn adopt_current() -> Result<(), String> {
         .file_name()
         .and_then(|s| s.to_str())
         .ok_or("cannot infer server target from cwd")?;
-    write_meta(&pane.cwd, target, Some(target), ConnectMode::Ssh)
+    write_meta(&pane.cwd, target, Some(target), ConnectMode::Ssh)?;
+    let found = FoundMeta {
+        dir: pane.cwd.clone(),
+        meta: ServerMeta {
+            target: target.into(),
+            label: target.into(),
+            mode: config::default_mode(),
+        },
+    };
+    sync_server_workspace(&pane.workspace_id, &found)
 }
 
 fn probe_from_args() -> Result<(), String> {
@@ -288,22 +304,25 @@ where
 }
 
 fn attach_terminal_from_args() -> Result<(), String> {
-    let target = target_from_arg(
-        &env::args()
-            .nth(2)
-            .ok_or("attach-terminal requires server")?,
-    );
+    let server_arg = env::args()
+        .nth(2)
+        .ok_or("attach-terminal requires server")?;
+    let found = found_for_server_arg(&server_arg, ConnectMode::Ssh);
+    let target = found.meta.target.clone();
     let terminal_id = env::args()
         .nth(3)
         .ok_or("attach-terminal requires terminal id")?;
     let pane = current_pane()?;
+    sync_server_workspace(&pane.workspace_id, &found)?;
     let json = herdr_json([
         "tab",
         "create",
         "--workspace",
         &pane.workspace_id,
+        "--cwd",
+        &found.dir.display().to_string(),
         "--label",
-        &format!("{}:{}", target, terminal_id),
+        &format!("{}:{}", server_label(&found), terminal_id),
         "--focus",
     ])?;
     let pane_id = created_pane_id(&json)?;
@@ -316,11 +335,33 @@ fn attach_terminal_from_args() -> Result<(), String> {
 }
 
 fn target_from_arg(value: &str) -> String {
+    found_for_server_arg(value, ConnectMode::Ssh).meta.target
+}
+
+fn found_for_server_arg(value: &str, mode: ConnectMode) -> FoundMeta {
     collect_servers()
         .into_iter()
         .find(|server| server.name == value)
-        .map(|server| server.target)
-        .unwrap_or_else(|| value.to_string())
+        .map(|server| found_for_server(&server, mode))
+        .unwrap_or_else(|| FoundMeta {
+            dir: config::server_base_dir().join(value),
+            meta: ServerMeta {
+                target: value.into(),
+                label: value.into(),
+                mode: mode_name(mode).into(),
+            },
+        })
+}
+
+fn found_for_server(server: &ServerEntry, mode: ConnectMode) -> FoundMeta {
+    FoundMeta {
+        dir: server.path.clone(),
+        meta: ServerMeta {
+            target: server.target.clone(),
+            label: server.name.clone(),
+            mode: mode_name(mode).into(),
+        },
+    }
 }
 
 fn current_pane() -> Result<PaneContext, String> {
@@ -417,6 +458,29 @@ fn infer_server_dir(cwd: &Path) -> Option<FoundMeta> {
     })
 }
 
+fn sync_server_workspace(workspace_id: &str, found: &FoundMeta) -> Result<(), String> {
+    write_meta(
+        &found.dir,
+        &found.meta.target,
+        Some(server_label(found)),
+        ConnectMode::parse(&found.meta.mode),
+    )?;
+    run_herdr([
+        "workspace",
+        "rename",
+        workspace_id,
+        &format!("server: {}", server_label(found)),
+    ])
+}
+
+fn server_label(found: &FoundMeta) -> &str {
+    if found.meta.label.trim().is_empty() {
+        &found.meta.target
+    } else {
+        &found.meta.label
+    }
+}
+
 fn write_meta(
     dir: &Path,
     target: &str,
@@ -486,6 +550,19 @@ mod tests {
         assert_eq!(mode_name(ConnectMode::Ssh), "ssh");
         assert_eq!(mode_name(ConnectMode::HerdrRemote), "herdr-remote");
         assert_eq!(mode_name(ConnectMode::HerdrTerminal), "herdr-terminal");
+    }
+
+    #[test]
+    fn server_label_falls_back_to_target() {
+        let found = FoundMeta {
+            dir: PathBuf::from("/tmp/s1"),
+            meta: ServerMeta {
+                target: "s1".into(),
+                label: "".into(),
+                mode: "ssh".into(),
+            },
+        };
+        assert_eq!(server_label(&found), "s1");
     }
 
     #[test]

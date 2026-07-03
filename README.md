@@ -32,7 +32,7 @@ label = "nn"
 mode = "ssh"
 ```
 
-Then `new-server-tab` can create a new tab in the current workspace and reconnect with `autossh` automatically.
+Then `new-server-tab`, `reconnect`, and `attach-terminal` keep the workspace synced to the `server: NAME` convention so restored workspaces can be recognized later.
 
 ## Install locally
 
@@ -140,7 +140,7 @@ herdr-server-aware remote-list nn
 herdr-server-aware attach-terminal nn term_abc123
 ```
 
-`new-tab` falls back to a normal Herdr tab when no `.herdr-server.toml`, server cwd, or `server: NAME` workspace label is found.
+`new-tab` falls back to a normal Herdr tab when no `.herdr-server.toml`, server cwd, or `server: NAME` workspace label is found. `open SERVER` focuses an existing `server: SERVER` workspace and reconnects its focused pane.
 
 ## Remote Herdr terminal attach
 

@@ -6,6 +6,9 @@
 - Optional `remote-list` cache with `--cache`, `--refresh`, and `--ttl-ms` for picker/search integrations.
 - Agent project docs under `.pi/docs/`.
 
+### Changed
+- Server workflows now sync workspace label/metadata to the `server: NAME` convention before reconnecting or attaching terminals.
+
 ## [0.2.0] - 2026-07-02
 
 ### Added

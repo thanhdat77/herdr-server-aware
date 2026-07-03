@@ -38,14 +38,14 @@ local Herdr workspace
 
 Commands:
 - `list` — JSON picker list of configured/SSH servers.
-- `open SERVER` — opens/focuses a local server workspace and SSH-connects.
+- `open SERVER` — opens/focuses a local server workspace, syncs `server: NAME`, and SSH-connects.
 - `init --dir DIR --target TARGET [--label LABEL] [--mode MODE]` — writes `.herdr-server.toml`.
 - `new-tab` — in a server workspace, creates another tab and reconnects.
 - `reconnect` — reconnects current pane to remembered target.
 - `adopt` — marks current cwd as a server workspace.
 - `probe SERVER` — checks remote SSH + Herdr availability.
 - `remote-list SERVER [--cache] [--refresh] [--ttl-ms N]` — lists remote Herdr terminals as picker JSON.
-- `attach-terminal SERVER TERMINAL_ID` — creates local tab and runs direct terminal attach over SSH.
+- `attach-terminal SERVER TERMINAL_ID` — syncs current workspace to `server: NAME`, creates a local tab, and runs direct terminal attach over SSH.
 
 Modes:
 - `ssh`: current default, runs `autossh` when available, else `ssh`.
@@ -91,6 +91,7 @@ ssh -tt SERVER 'herdr terminal attach TERMINAL_ID --takeover'
 - Prefer JSON CLI integration over custom SDK/UI.
 - Use Herdr CLI as plugin API; no direct socket code unless CLI is insufficient.
 - Keep `.herdr-server.toml` as the durable marker for server identity.
+- Keep workspace label `server: NAME` synced as the convention marker for restored workspaces.
 - Do not auto-probe SSH in hot paths like `list`; remote probing can be slow.
 - Cache only `remote-list SERVER`, not fast local `list`.
 - Hook idea is acceptable only if cheap: auto-`adopt` cwd under `base_dir`; no filesystem scans, no network probe.
