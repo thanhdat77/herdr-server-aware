@@ -41,7 +41,28 @@ cargo build --release
 herdr plugin link "$PWD"
 ```
 
-## Picker integration
+## Search and picker integration
+
+`herdr-server-aware` prints picker-friendly JSON, so any search UI can use it:
+
+```bash
+herdr-server-aware list              # local server entries
+herdr-server-aware remote-list nn    # remote Herdr terminals on server nn
+```
+
+Each item has this shape:
+
+```json
+{
+  "id": "nn::term_abc123",
+  "title": "nn / api / pi",
+  "subtitle": "idle w1:p1 /srv/api",
+  "path": "/srv/api",
+  "kind": "remote-terminal"
+}
+```
+
+### herdr-picker-plus: servers
 
 Add this to `herdr-picker-plus` config so servers still appear under `Ctrl-S`:
 
@@ -55,6 +76,23 @@ open = "herdr-server-aware open {{id}}"
 notify_success = false
 notify_error = true
 ```
+
+### herdr-picker-plus: remote Herdr terminals
+
+For one known server:
+
+```toml
+[[integrations]]
+id = "server-aware-terminals-nn"
+label = "nn terminals"
+enabled = true
+collect = "herdr-server-aware remote-list nn"
+open = "bash -lc 'id=\"$1\"; server=${id%%::*}; term=${id#*::}; herdr-server-aware attach-terminal \"$server\" \"$term\"' -- {{id}}"
+notify_success = false
+notify_error = true
+```
+
+This searches remote Herdr panes, then opens only the selected terminal in your current local workspace.
 
 ## Config
 

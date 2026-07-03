@@ -1,8 +1,8 @@
 id = "herdr-server-aware"
 name = "Server Aware"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.7.0"
-description = "Remember server workspace identity and open SSH-aware tabs/reconnects."
+description = "Remember server identity and attach remote Herdr terminals into local workspaces."
 platforms = ["linux", "macos"]
 
 [[build]]

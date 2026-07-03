@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-02
+
+### Added
+- Remote Herdr terminal discovery with `remote-list SERVER`.
+- Single terminal attach with `attach-terminal SERVER TERMINAL_ID`.
+- `probe SERVER` command for checking remote Herdr availability.
+- Modular host/SSH/server/picker structure for future connection modes.
+- Search and picker integration docs for remote Herdr terminals.
+
 ## [0.1.0] - 2026-07-02
 
 ### Added
