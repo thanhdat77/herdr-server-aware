@@ -3,7 +3,25 @@
 [![CI](https://github.com/thanhdat77/herdr-server-aware/actions/workflows/ci.yml/badge.svg)](https://github.com/thanhdat77/herdr-server-aware/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Small Herdr helper plugin for server workspaces.
+Make every remote server feel like a local workspace.
+
+Herdr Server Aware keeps your local Herdr workflow while making remote servers easy to open, reconnect, and attach to. Use plain SSH for quick shells, `herdr --remote` for full remote sessions, or attach one remote Herdr terminal back into your current local workspace.
+
+## Why not just SSH?
+
+Normal SSH opens a fresh shell. This plugin remembers server identity, opens smart server tabs, and can attach to a terminal that is already alive inside remote Herdr.
+
+Compared with plain SSH:
+
+- `new-tab` reconnects to the same server automatically.
+- `remote-list` discovers Herdr terminals already running on the server.
+- `attach-terminal` pulls one persistent remote terminal into your local workspace.
+
+Compared with full `herdr --remote`:
+
+- you keep your local workspace as the main workspace.
+- you attach only the remote terminal you need, not the whole remote Herdr UI.
+- trade-off: local Herdr sees it as one SSH-backed pane, not native remote panes/tabs.
 
 It stores server identity in the workspace directory:
 
@@ -54,6 +72,7 @@ ssh_config = true
 # [[servers.entries]]
 # name = "prod-shortcut"
 # target = "prod-api"
+# mode = "ssh" # ssh | herdr-remote | herdr-terminal
 # tags = ["prod"]
 ```
 
@@ -73,9 +92,35 @@ description = "smart server tab"
 herdr-server-aware list
 herdr-server-aware open nn
 herdr-server-aware init --dir ~/workspace/server/nn --target nn --label nn
+herdr-server-aware init --dir ~/workspace/server/nn --target nn --mode herdr-remote
 herdr-server-aware new-tab
 herdr-server-aware reconnect
 herdr-server-aware adopt
+herdr-server-aware probe nn
+herdr-server-aware remote-list nn
+herdr-server-aware attach-terminal nn term_abc123
 ```
 
 `new-tab` falls back to a normal Herdr tab when no `.herdr-server.toml`, server cwd, or `server: NAME` workspace label is found.
+
+## Remote Herdr terminal attach
+
+For a server that already runs Herdr, list remote terminals:
+
+```bash
+herdr-server-aware remote-list nn
+```
+
+Then attach one remote Herdr terminal into the current local workspace:
+
+```bash
+herdr-server-aware attach-terminal nn term_abc123
+```
+
+This creates a local tab that runs:
+
+```bash
+ssh -tt nn 'herdr terminal attach term_abc123 --takeover'
+```
+
+Use `mode = "herdr-remote"` when you want a tab to run full `herdr --remote nn` instead of plain SSH.
